@@ -1,46 +1,309 @@
-categories:
-  russia_news:
-    label: "Новости России"
-    type: rss
-    feed_urls:
-      - "https://lenta.ru/rss/news"
-      - "https://ria.ru/export/rss2/archive/index.xml"
-      - "https://www.gazeta.ru/export/rss/lenta.xml"
+from __future__ import annotations
 
-  auto:
-    label: "Машины и автосервисы"
-    type: rss
-    feed_urls:
-      - "https://www.zr.ru/rss/news.xml"
-      - "https://motor.ru/exports/rss.xml"
+import random
+from datetime import datetime
+from typing import Any
 
-  games:
-    label: "Игры"
-    type: rss
-    feed_urls:
-      - "https://www.playground.ru/rss/news"
-      - "https://kanobu.ru/rss/news.xml"
+import feedparser
+import yaml
+from bs4 import BeautifulSoup
 
-  tattoos:
-    label: "Тату и эскизы"
-    type: rss
-    feed_urls:
-      - "https://www.tattoodo.com/rss"
+from app.utils.text import normalize_text, safe_caption
 
-  lifehacks:
-    label: "Лайфхаки и полезные советы"
-    type: rss
-    feed_urls:
-      - "https://lifehacker.ru/feed/"
-      - "https://www.adme.ru/rss/"
 
-  homemaking:
-    label: "Дом, быт и кухня"
-    type: rss
-    feed_urls:
-      - "https://1000.menu/rss"
-      - "https://eda.ru/feeds/recepty.rss"
+class ContentProvider:
+    def __init__(self, sources_path: str, default_language: str = "ru") -> None:
+        self.sources_path = sources_path
+        self.default_language = default_language
+        with open(sources_path, "r", encoding="utf-8") as f:
+            self.sources = yaml.safe_load(f)
 
-  holidays:
-    label: "Праздники и события дня"
-    type: holiday
+    def categories(self) -> list[str]:
+        return list(self.sources["categories"].keys())
+
+    async def fetch_item(self, category: str, seen_ids: set[str]) -> dict[str, Any] | None:
+        entry = self.sources["categories"][category]
+        source_type = entry["type"]
+        if source_type == "rss":
+            return await self._from_rss(category, entry, seen_ids)
+        if source_type == "holiday":
+            return await self._holiday_item(category)
+        return None
+
+    async def _from_rss(self, category: str, entry: dict[str, Any], seen_ids: set[str]) -> dict[str, Any] | None:
+        urls = list(entry.get("feed_urls", []))
+        random.shuffle(urls)
+
+        for feed_url in urls:
+            parsed = feedparser.parse(feed_url)
+            candidates = parsed.entries[:20]
+            random.shuffle(candidates)
+
+            for item in candidates:
+                external_id = item.get("id") or item.get("link")
+                if not external_id or external_id in seen_ids:
+                    continue
+
+                title = normalize_text(item.get("title", "Интересная находка"))
+                summary = safe_caption(item.get("summary", item.get("description", "")), limit=400)
+
+                media_url = None
+                media_candidates = item.get("media_content") or item.get("media_thumbnail") or []
+                if media_candidates:
+                    media_url = media_candidates[0].get("url")
+
+                if not media_url:
+                    soup = BeautifulSoup(item.get("summary", "") or "", "html.parser")
+                    img = soup.find("img")
+                    if img and img.get("src"):
+                        media_url = img["src"]
+
+                return {
+                    "category": category,
+                    "source_type": "rss",
+                    "source_url": feed_url,
+                    "external_id": external_id,
+                    "title": title,
+                    "text": self._render_caption(category, title, summary),
+                    "media_url": media_url,
+                    "link": item.get("link"),
+                }
+
+        return None
+
+    async def _holiday_item(self, category: str) -> dict[str, Any] | None:
+        today = datetime.utcnow().date()
+        weekday_names = {
+            0: "понедельник",
+            1: "вторник",
+            2: "среда",
+            3: "четверг",
+            4: "пятница",
+            5: "суббота",
+            6: "воскресенье",
+        }
+        weekday = weekday_names[today.weekday()]
+
+        hooks = [
+            "Сегодняшняя тема для своих 👇",
+            "Давайте немного актива в комментах 👇",
+            "Мини-интерактив на сегодня 👇",
+        ]
+        questions = [
+            "Что у вас сегодня по настроению: игры, работа, дорога или домашние дела?",
+            "Во что сейчас играете, чем занимаетесь или что интересного происходит?",
+            "Кто сегодня за рулём, кто дома, а кто просто отдыхает?",
+            "Какой у вас лучший лайфхак за последнее время?",
+        ]
+        cta = random.choice(self._engagement_cta(category))
+
+        text = (
+            f"📅 {random.choice(hooks)}\n\n"
+            f"Сегодня {today.strftime('%d.%m.%Y')}, {weekday}.\n"
+            f"{random.choice(questions)}\n\n"
+            f"{cta}"
+        )
+
+        return {
+            "category": category,
+            "source_type": "holiday",
+            "source_url": "local",
+            "external_id": f"holiday:{today.isoformat()}",
+            "title": f"День {today.strftime('%d.%m')}",
+            "text": safe_caption(text, limit=1024),
+            "media_url": None,
+            "link": None,
+        }
+
+    def _render_caption(self, category: str, title: str, summary: str) -> str:
+        summary = self._clean_summary(summary)
+        intro = self._intro_for_category(category)
+        question = self._question_for_category(category)
+        emoji = self._emoji_for_category(category)
+        tag = self._tag_for_category(category)
+        cta = random.choice(self._engagement_cta(category))
+
+        parts = [
+            f"{emoji} {intro}",
+            "",
+            f"{title}",
+        ]
+
+        if summary:
+            parts.extend(["", summary])
+
+        if question:
+            parts.extend(["", question])
+
+        parts.extend(["", cta])
+        parts.extend(["", tag])
+
+        return safe_caption("\n".join(parts), limit=1024)
+
+    def _clean_summary(self, text: str) -> str:
+        text = normalize_text(
+            BeautifulSoup(text or "", "html.parser").get_text(" ", strip=True)
+        )
+        if not text:
+            return ""
+        if len(text) > 220:
+            text = text[:220].rsplit(" ", 1)[0].rstrip(".,!?:;") + "…"
+        return text
+
+    def _intro_for_category(self, category: str) -> str:
+        mapping = {
+            "russia_news": random.choice([
+                "Что нового по России",
+                "Свежее из России",
+                "Коротко о важном",
+                "Тема дня по России",
+            ]),
+            "auto": random.choice([
+                "Что нового в авто теме",
+                "Полезное для водителей",
+                "Интересное про машины",
+                "Авто тема дня",
+            ]),
+            "games": random.choice([
+                "Что интересного в играх",
+                "Игровая тема дня",
+                "Свежак для геймеров",
+                "Новость для тех, кто в теме",
+            ]),
+            "tattoos": random.choice([
+                "Идея для тату",
+                "Что сейчас в тату теме",
+                "Интересное из мира тату",
+                "Тату тема дня",
+            ]),
+            "lifehacks": random.choice([
+                "Полезная штука на каждый день",
+                "Лайфхак дня",
+                "Заметка, которая может пригодиться",
+                "Полезно и без воды",
+            ]),
+            "homemaking": random.choice([
+                "Полезное для дома",
+                "Бытовой совет дня",
+                "Что пригодится дома и на кухне",
+                "Домашняя тема дня",
+            ]),
+            "holidays": random.choice([
+                "Немного актива",
+                "Тема дня",
+                "Интерактив для своих",
+            ]),
+        }
+        return mapping.get(category, "Интересный пост")
+
+    def _question_for_category(self, category: str) -> str:
+        mapping = {
+            "russia_news": random.choice([
+                "Как вам такая новость?",
+                "Что думаете по этому поводу?",
+                "Норм тема или мимо?",
+            ]),
+            "auto": random.choice([
+                "У кого было что-то похожее?",
+                "Что скажете по этой теме?",
+                "Полезно или спорно?",
+            ]),
+            "games": random.choice([
+                "Играли бы в такое?",
+                "Как вам тема?",
+                "Во что сами сейчас играете?",
+            ]),
+            "tattoos": random.choice([
+                "Сделали бы себе что-то в таком стиле?",
+                "Как вам идея?",
+                "Зашло или не ваше?",
+            ]),
+            "lifehacks": random.choice([
+                "Пробовали так делать?",
+                "Полезно или и так знали?",
+                "Берёте на заметку?",
+            ]),
+            "homemaking": random.choice([
+                "Пригодится дома?",
+                "Пользуетесь такими советами?",
+                "Норм лайфхак или мимо?",
+            ]),
+            "holidays": random.choice([
+                "Пишите в комменты.",
+                "Давайте пообщаемся.",
+                "Что у вас сегодня интересного?",
+            ]),
+        }
+        return mapping.get(category, "Что скажете?")
+
+    def _emoji_for_category(self, category: str) -> str:
+        mapping = {
+            "russia_news": "📰",
+            "auto": "🚗",
+            "games": "🎮",
+            "tattoos": "🖤",
+            "lifehacks": "💡",
+            "homemaking": "🏠",
+            "holidays": "📅",
+        }
+        return mapping.get(category, "🔥")
+
+    def _tag_for_category(self, category: str) -> str:
+        mapping = {
+            "russia_news": "#Россия #Новости",
+            "auto": "#Авто #Машины",
+            "games": "#Игры #Гейминг",
+            "tattoos": "#Тату #Эскизы",
+            "lifehacks": "#Лайфхак #Полезное",
+            "homemaking": "#Дом #Быт",
+            "holidays": "#Интерактив #Общение",
+        }
+        return mapping.get(category, "#Пост")
+
+    def _engagement_cta(self, category: str) -> list[str]:
+        common = [
+            "Если пост зашёл — жми реакцию 👍",
+            "Подпишись, если любишь такой формат постов.",
+            "Напиши в комментариях своё мнение 👇",
+            "Если хочешь больше такого контента — поддержи реакцией.",
+        ]
+
+        category_map = {
+            "russia_news": [
+                "Как вам такая тема? Реакцию влепить не забываем 👍",
+                "Если интересно следить за такими новостями — подписывайся.",
+                "Мнение по теме кидай в комментарии 👇",
+            ],
+            "auto": [
+                "У кого авто тема болит — жми реакцию 🚗",
+                "Если нужен ещё авто контент — подписывайся.",
+                "Свои советы и опыт пиши в комментарии 👇",
+            ],
+            "games": [
+                "Если тема игр тебе близка — прожми реакцию 🎮",
+                "Подписывайся, если нужен ещё игровой контент.",
+                "Во что играешь сейчас — напиши в комментариях 👇",
+            ],
+            "tattoos": [
+                "Если стиль зашёл — кинь реакцию 🖤",
+                "Подписывайся, если хочешь больше постов про тату.",
+                "Своё мнение или идеи пиши в комментарии 👇",
+            ],
+            "lifehacks": [
+                "Полезно? Тогда поддержи пост реакцией 💡",
+                "Подпишись, если любишь полезные короткие посты.",
+                "Свои лайфхаки можешь закинуть в комментарии 👇",
+            ],
+            "homemaking": [
+                "Если пригодится — прожми реакцию 🏠",
+                "Подписывайся, если нужен ещё полезный бытовой контент.",
+                "Свои советы для дома кидай в комментарии 👇",
+            ],
+            "holidays": [
+                "Реакцию для актива не жалеем 🔥",
+                "Подписывайся, тут ещё будет много интересного.",
+                "Ответы жду в комментариях 👇",
+            ],
+        }
+
+        return category_map.get(category, []) + common
