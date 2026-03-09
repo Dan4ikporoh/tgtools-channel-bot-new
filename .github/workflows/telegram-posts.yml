@@ -1,0 +1,34 @@
+name: Telegram Channel Bot
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+jobs:
+  publish-post:
+    runs-on: ubuntu-latest
+
+    env:
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+      DISCUSSION_CHAT: ${{ secrets.DISCUSSION_CHAT }}
+      OWNER_IDS: ${{ secrets.OWNER_IDS }}
+      POST_TIMES: ${{ secrets.POST_TIMES }}
+      TIMEZONE: ${{ secrets.TIMEZONE }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scheduled post
+        run: python -m app.run_once
