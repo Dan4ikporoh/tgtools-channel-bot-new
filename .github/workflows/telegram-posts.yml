@@ -13,7 +13,7 @@ jobs:
     env:
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
       CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
-      DISCUSSION_CHAT: ${{ secrets.DISCUSSION_CHAT }}
+      DISCUSSION_CHAT_ID: ${{ secrets.DISCUSSION_CHAT_ID }}
       OWNER_IDS: ${{ secrets.OWNER_IDS }}
       POST_TIMES: ${{ secrets.POST_TIMES }}
       TIMEZONE: ${{ secrets.TIMEZONE }}
