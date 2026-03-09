@@ -1,33 +1,46 @@
 categories:
-  world_news:
-    label: "Мировые новости"
+  russia_news:
+    label: "Новости России"
     type: rss
     feed_urls:
-      - "https://feeds.bbci.co.uk/news/world/rss.xml"
-      - "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
-  tech:
-    label: "Технологии"
+      - "https://lenta.ru/rss/news"
+      - "https://ria.ru/export/rss2/archive/index.xml"
+      - "https://www.gazeta.ru/export/rss/lenta.xml"
+
+  auto:
+    label: "Машины и автосервисы"
     type: rss
     feed_urls:
-      - "https://techcrunch.com/feed/"
-      - "https://www.theverge.com/rss/index.xml"
-  gaming:
+      - "https://www.zr.ru/rss/news.xml"
+      - "https://motor.ru/exports/rss.xml"
+
+  games:
     label: "Игры"
     type: rss
     feed_urls:
-      - "https://www.pcgamer.com/rss/"
-      - "https://www.gamesradar.com/feeds/articletype/news/"
+      - "https://www.playground.ru/rss/news"
+      - "https://kanobu.ru/rss/news.xml"
+
+  tattoos:
+    label: "Тату и эскизы"
+    type: rss
+    feed_urls:
+      - "https://www.tattoodo.com/rss"
+
+  lifehacks:
+    label: "Лайфхаки и полезные советы"
+    type: rss
+    feed_urls:
+      - "https://lifehacker.ru/feed/"
+      - "https://www.adme.ru/rss/"
+
+  homemaking:
+    label: "Дом, быт и кухня"
+    type: rss
+    feed_urls:
+      - "https://1000.menu/rss"
+      - "https://eda.ru/feeds/recepty.rss"
+
   holidays:
     label: "Праздники и события дня"
     type: holiday
-  space:
-    label: "Космос и красивые фото"
-    type: nasa_apod
-  wiki_featured:
-    label: "Фото дня"
-    type: wikimedia_featured
-  channel_tools:
-    label: "Полезные Telegram-сервисы"
-    type: rss
-    feed_urls:
-      - "https://www.producthunt.com/feed"
