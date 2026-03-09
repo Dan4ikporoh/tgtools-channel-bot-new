@@ -1,0 +1,33 @@
+categories:
+  world_news:
+    label: "Мировые новости"
+    type: rss
+    feed_urls:
+      - "https://feeds.bbci.co.uk/news/world/rss.xml"
+      - "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
+  tech:
+    label: "Технологии"
+    type: rss
+    feed_urls:
+      - "https://techcrunch.com/feed/"
+      - "https://www.theverge.com/rss/index.xml"
+  gaming:
+    label: "Игры"
+    type: rss
+    feed_urls:
+      - "https://www.pcgamer.com/rss/"
+      - "https://www.gamesradar.com/feeds/articletype/news/"
+  holidays:
+    label: "Праздники и события дня"
+    type: holiday
+  space:
+    label: "Космос и красивые фото"
+    type: nasa_apod
+  wiki_featured:
+    label: "Фото дня"
+    type: wikimedia_featured
+  channel_tools:
+    label: "Полезные Telegram-сервисы"
+    type: rss
+    feed_urls:
+      - "https://www.producthunt.com/feed"
