@@ -38,9 +38,12 @@ class ContentProvider:
         urls = list(entry.get("feed_urls", []))
         random.shuffle(urls)
 
+        best_with_media: dict[str, Any] | None = None
+        best_without_media: dict[str, Any] | None = None
+
         for feed_url in urls:
             parsed = feedparser.parse(feed_url)
-            candidates = parsed.entries[:20]
+            candidates = parsed.entries[:25]
             random.shuffle(candidates)
 
             for item in candidates:
@@ -48,35 +51,89 @@ class ContentProvider:
                 if not external_id or external_id in seen_ids:
                     continue
 
-                title = normalize_text(item.get("title", "Интересная находка"))
-                raw_summary = item.get("summary", item.get("description", ""))
-                summary = safe_caption(raw_summary, limit=500)
+                normalized = self._build_item(category, feed_url, item)
+                if not normalized:
+                    continue
 
-                media_url = None
-                media_candidates = item.get("media_content") or item.get("media_thumbnail") or []
-                if media_candidates:
-                    media_url = media_candidates[0].get("url")
+                if normalized.get("media_url"):
+                    return normalized
 
-                if not media_url:
-                    soup = BeautifulSoup(raw_summary or "", "html.parser")
-                    img = soup.find("img")
-                    if img and img.get("src"):
-                        media_url = img["src"]
+                if not best_without_media:
+                    best_without_media = normalized
 
-                link = item.get("link")
-                text = self._render_caption(category, title, summary)
+            if best_with_media:
+                return best_with_media
 
-                return {
-                    "category": category,
-                    "source_type": "rss",
-                    "source_url": feed_url,
-                    "external_id": external_id,
-                    "title": title,
-                    "text": text,
-                    "media_url": media_url,
-                    "link": link,
-                    "boost_url": BOOST_URL,
-                }
+        return best_without_media
+
+    def _build_item(self, category: str, feed_url: str, item: Any) -> dict[str, Any] | None:
+        title = normalize_text(item.get("title", "Интересная находка"))
+        raw_summary = item.get("summary", item.get("description", ""))
+        summary = safe_caption(raw_summary, limit=500)
+
+        media_url = self._extract_media_url(item, raw_summary)
+        link = item.get("link")
+        text = self._render_caption(category, title, summary)
+
+        external_id = item.get("id") or item.get("link")
+        if not external_id:
+            return None
+
+        return {
+            "category": category,
+            "source_type": "rss",
+            "source_url": feed_url,
+            "external_id": external_id,
+            "title": title,
+            "text": text,
+            "media_url": media_url,
+            "link": link,
+            "boost_url": BOOST_URL,
+        }
+
+    def _extract_media_url(self, item: Any, raw_summary: str) -> str | None:
+        media_candidates = []
+
+        if item.get("media_content"):
+            media_candidates.extend(item.get("media_content", []))
+
+        if item.get("media_thumbnail"):
+            media_candidates.extend(item.get("media_thumbnail", []))
+
+        for enclosure in item.get("enclosures", []):
+            href = enclosure.get("href") or enclosure.get("url")
+            if href:
+                media_candidates.append({"url": href, "type": enclosure.get("type", "")})
+
+        for candidate in media_candidates:
+            url = candidate.get("url")
+            if not url:
+                continue
+
+            lowered = url.lower()
+            if any(ext in lowered for ext in [".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov", ".m4v", ".webm"]):
+                return url
+
+            ctype = (candidate.get("type") or "").lower()
+            if ctype.startswith("image/") or ctype.startswith("video/"):
+                return url
+
+        soup = BeautifulSoup(raw_summary or "", "html.parser")
+
+        og_img = soup.find("meta", property="og:image")
+        if og_img and og_img.get("content"):
+            return og_img["content"]
+
+        first_img = soup.find("img")
+        if first_img and first_img.get("src"):
+            return first_img["src"]
+
+        for video in soup.find_all("video"):
+            if video.get("src"):
+                return video["src"]
+            source = video.find("source")
+            if source and source.get("src"):
+                return source["src"]
 
         return None
 
